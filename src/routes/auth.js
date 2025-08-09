@@ -38,4 +38,9 @@ router.post("/login", async (req, res) => {
   }
 });
 
+// Stateless logout: client should discard token; server endpoint returns success for symmetry
+router.post("/logout", async (req, res) => {
+  return res.json({ message: "Logged out" });
+});
+
 export default router;
