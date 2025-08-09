@@ -15,8 +15,32 @@ app.use(cors());
 app.use(express.json());
 app.use(morgan("dev"));
 
+// Simple runtime env validation to catch misconfig early
+const requiredEnvVars = ["DATABASE_URL", "JWT_SECRET", "FINNHUB_API_KEY"];
+const missingEnvVars = requiredEnvVars.filter((key) => !process.env[key]);
+if (missingEnvVars.length > 0) {
+  console.warn(
+    `Warning: missing environment variables -> ${missingEnvVars.join(
+      ", "
+    )}. The server will start but related features may fail.`
+  );
+}
+
 app.get("/", (req, res) => {
   res.send("Finnacle Backend is running 🚀");
+});
+
+// Health endpoint to verify env presence from the platform (without leaking secrets)
+app.get("/api/health", (req, res) => {
+  res.json({
+    status: "ok",
+    env: {
+      DATABASE_URL: Boolean(process.env.DATABASE_URL),
+      JWT_SECRET: Boolean(process.env.JWT_SECRET),
+      FINNHUB_API_KEY: Boolean(process.env.FINNHUB_API_KEY),
+      node_env: process.env.NODE_ENV || null,
+    },
+  });
 });
 
 app.use("/api/auth", authRoutes);
