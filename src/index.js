@@ -43,6 +43,17 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+// Health endpoint to verify DB connectivity and basic prisma operation
+app.get("/api/health/db", async (req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    const userCount = await prisma.user.count();
+    res.json({ ok: true, userCount });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 app.use("/api/auth", authRoutes);
 app.use("/api/portfolio", portfolioRoutes);
 
