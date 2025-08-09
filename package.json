@@ -1,0 +1,29 @@
+{
+  "name": "finnacle-backend",
+  "version": "1.0.0",
+  "type": "module",
+
+  "description": "Backend for Finnacle fintech app",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "nodemon src/index.js",
+    "start": "node src/index.js",
+    "migrate": "npx prisma migrate dev",
+    "generate": "npx prisma generate",
+    "seed": "node prisma/seed.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.0",
+    "bcrypt": "^5.1.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.0",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "prisma": "^5.8.0",
+    "@prisma/client": "^5.8.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}
