@@ -118,4 +118,21 @@ router.get("/cmc/quote", async (req, res) => {
   }
 });
 
+// Indian Stock API - base URL via env INDIAN_STOCK_API_URL
+router.get("/india/quote", async (req, res) => {
+  try {
+    const baseUrl = process.env.INDIAN_STOCK_API_URL; // e.g., https://stock.indianapi.in
+    if (!baseUrl) return res.status(500).json({ error: "INDIAN_STOCK_API_URL missing" });
+    const { symbol } = req.query;
+    if (!symbol) return res.status(400).json({ error: "Missing symbol" });
+    const { data } = await axios.get(`${baseUrl.replace(/\/$/, '')}/quote`, {
+      params: { symbol },
+    });
+    res.setHeader("Cache-Control", "s-maxage=15, stale-while-revalidate=30");
+    return res.json(data);
+  } catch (e) {
+    return respondError(res, e);
+  }
+});
+
 export default router;

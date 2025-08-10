@@ -7,6 +7,7 @@ import { PrismaClient } from "@prisma/client";
 import authRoutes from "./routes/auth.js";
 import portfolioRoutes from "./routes/portfolio.js";
 import marketRoutes from "./routes/market.js";
+import watchlistRoutes from "./routes/watchlist.js";
 
 dotenv.config();
 const app = express();
@@ -58,6 +59,7 @@ app.get("/api/health/db", async (req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/portfolio", portfolioRoutes);
 app.use("/api", marketRoutes);
+app.use("/api", watchlistRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
