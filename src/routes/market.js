@@ -125,7 +125,8 @@ router.get("/india/quote", async (req, res) => {
     if (!baseUrl) return res.status(500).json({ error: "INDIAN_STOCK_API_URL missing" });
     const { symbol } = req.query;
     if (!symbol) return res.status(400).json({ error: "Missing symbol" });
-    const { data } = await axios.get(`${baseUrl.replace(/\/$/, '')}/quote`, {
+    const normalized = String(baseUrl).replace(/\/$/, "");
+    const { data } = await axios.get(`${normalized}/quote`, {
       params: { symbol },
     });
     res.setHeader("Cache-Control", "s-maxage=15, stale-while-revalidate=30");

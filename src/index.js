@@ -13,15 +13,27 @@ dotenv.config();
 const app = express();
 const prisma = new PrismaClient();
 
-app.use(cors({
-  origin: [
-    "https://finnacle-beta.vercel.app", // production frontend
-    "http://localhost:3000"             // local dev
-  ],
+// Centralized CORS configuration used for all requests, including preflights and errors
+const allowedOrigins = [
+  "https://finnacle-beta.vercel.app", // production frontend
+  "http://localhost:3000",            // local dev
+];
+
+const corsOptions = {
+  origin(origin, callback) {
+    // Allow non-browser or same-origin requests with no Origin
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error("Not allowed by CORS"));
+  },
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
-  credentials: true
-}));
+  credentials: true,
+};
+
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
+
 app.use(express.json());
 app.use(morgan("dev"));
 
@@ -68,6 +80,20 @@ app.use("/api/auth", authRoutes);
 app.use("/api/portfolio", portfolioRoutes);
 app.use("/api", marketRoutes);
 app.use("/api", watchlistRoutes);
+
+// Global error handler: ensure CORS headers present on errors as well
+app.use((err, req, res, next) => {
+  try {
+    const origin = req.headers.origin;
+    if (origin && allowedOrigins.includes(origin)) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Vary", "Origin");
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+    }
+  } catch {}
+  const status = err.status || 500;
+  res.status(status).json({ error: err.message || "Server error" });
+});
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
