@@ -12,6 +12,7 @@ model User {
   email     String   @unique
   password  String
   portfolios Portfolio[]
+  watchlistItems UserWatchlist[]
 }
 
 model Portfolio {
@@ -28,4 +29,15 @@ model Holding {
   quantity     Float
   portfolio    Portfolio @relation(fields: [portfolioId], references: [id])
   portfolioId  Int
+}
+
+model UserWatchlist {
+  id          Int    @id @default(autoincrement())
+  user        User   @relation(fields: [userId], references: [id])
+  userId      Int
+  marketType  String
+  symbol      String
+
+  @@unique([userId, marketType, symbol])
+  @@map("user_watchlist")
 }
