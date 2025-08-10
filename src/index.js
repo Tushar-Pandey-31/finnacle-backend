@@ -13,7 +13,15 @@ dotenv.config();
 const app = express();
 const prisma = new PrismaClient();
 
-app.use(cors());
+app.use(cors({
+  origin: [
+    "https://finnacle-beta.vercel.app", // production frontend
+    "http://localhost:3000"             // local dev
+  ],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true
+}));
 app.use(express.json());
 app.use(morgan("dev"));
 
