@@ -16,7 +16,8 @@ const prisma = new PrismaClient();
 
 // Centralized CORS configuration used for all requests, including preflights and errors
 const allowedOrigins = [
-  "https://finnacle-beta.vercel.app", // production frontend
+  "https://finnacle-beta.vercel.app",
+  "https://finnacle-ai-microservice.vercel.app/",
   "http://localhost:3000",            // local dev
 ];
 
