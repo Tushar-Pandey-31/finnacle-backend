@@ -32,7 +32,8 @@ router.post("/ai/analyze-portfolio", authMiddleware, async (req, res) => {
 
     let portfolioPayload = [];
 
-    if (portfolioId != null) {
+    // Correctly check for a valid portfolioId before processing
+    if (portfolioId != null && !isNaN(Number(portfolioId))) {
       const id = parseInt(portfolioId);
       if (!Number.isInteger(id) || id <= 0) {
         return res.status(400).json({ error: "Invalid portfolioId" });
@@ -77,7 +78,7 @@ router.post("/ai/analyze-portfolio", authMiddleware, async (req, res) => {
         {
           headers: { "x-api-key": aiKey, "Content-Type": "application/json" },
           signal: controller.signal,
-          validateStatus: (s) => s >= 200 && s < 500, // capture errors as data for mapping
+          validateStatus: (s) => s >= 200 && s < 500,
         }
       );
     } finally {
