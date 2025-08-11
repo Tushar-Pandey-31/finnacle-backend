@@ -8,6 +8,7 @@ import authRoutes from "./routes/auth.js";
 import portfolioRoutes from "./routes/portfolio.js";
 import marketRoutes from "./routes/market.js";
 import watchlistRoutes from "./routes/watchlist.js";
+import aiRoutes from "./routes/ai.js";
 
 dotenv.config();
 const app = express();
@@ -80,6 +81,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/portfolio", portfolioRoutes);
 app.use("/api", marketRoutes);
 app.use("/api", watchlistRoutes);
+app.use("/api", aiRoutes);
 
 // Global error handler: ensure CORS headers present on errors as well
 app.use((err, req, res, next) => {
