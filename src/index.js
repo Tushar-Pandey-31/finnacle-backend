@@ -10,6 +10,11 @@ import marketRoutes from "./routes/market.js";
 import watchlistRoutes from "./routes/watchlist.js";
 import aiRoutes from "./routes/ai.js";
 
+import { initializeDatabase } from './utils/initDB.js';
+
+// Initialize database schema
+await initializeDatabase();
+
 dotenv.config();
 const app = express();
 const prisma = new PrismaClient();
