@@ -126,4 +126,26 @@ router.post("/logout", async (req, res) => {
   return res.json({ message: "Logged out" });
 });
 
+
+router.get('/debug-db', async (req, res) => {
+  try {
+    // We are attempting a query that explicitly uses the new column
+    await prisma.user.findFirst({
+      select: {
+        emailVerified: true,
+      },
+    });
+    res.status(200).json({ status: 'OK', message: 'Database schema is up-to-date.' });
+  } catch (e) {
+    // This will catch the specific Prisma error and give us the details
+    console.error('DEBUG DB ERROR:', e);
+    res.status(500).json({ 
+      status: 'ERROR', 
+      message: 'Failed to query the new schema.',
+      errorCode: e.code, // The specific Prisma error code
+      errorMessage: e.message,
+    });
+  }
+});
+
 export default router;

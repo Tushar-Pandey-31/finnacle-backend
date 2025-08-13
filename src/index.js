@@ -98,5 +98,16 @@ app.use((err, req, res, next) => {
   res.status(status).json({ error: err.message || "Server error" });
 });
 
+app.use((err, req, res, next) => {
+  console.error(err); // Log the full error to the console for debugging
+
+  const status = err.status || 500;
+  const message = process.env.NODE_ENV === 'production' 
+    ? 'An unexpected server error occurred.' 
+    : err.message;
+
+  res.status(status).json({ error: message });
+});
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
