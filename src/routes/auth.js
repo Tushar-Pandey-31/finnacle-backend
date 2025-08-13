@@ -4,7 +4,7 @@ import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import { PrismaClient } from "@prisma/client";
 import { body, validationResult } from "express-validator";
-import { mailTransport } from "../config/nodemailer.js";
+import { Resend } from "resend"; // Import Resend
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -19,13 +19,16 @@ router.post(
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        return res.status(400).json({ error: "Invalid input", details: errors.array() });
+        return res
+          .status(400)
+          .json({ error: "Invalid input", details: errors.array() });
       }
 
       const { email, password } = req.body;
 
       const existing = await prisma.user.findUnique({ where: { email } });
-      if (existing) return res.status(400).json({ error: "Email already registered" });
+      if (existing)
+        return res.status(400).json({ error: "Email already registered" });
 
       const hashed = await bcrypt.hash(password, 10);
       const token = crypto.randomBytes(32).toString("hex");
@@ -44,11 +47,16 @@ router.post(
 
       const from = process.env.EMAIL_FROM_ADDRESS;
       const frontendUrl = process.env.FRONTEND_URL || "";
-      const verifyUrl = `${String(frontendUrl).replace(/\/$/, "")}/verify-email?token=${token}`;
+      const verifyUrl = `${String(frontendUrl).replace(
+        /\/$/,
+        ""
+      )}/verify-email?token=${token}`;
 
+      // --- THIS IS THE ONLY PART THAT HAS CHANGED ---
       try {
-        await mailTransport.sendMail({
-          from,
+        const resend = new Resend(process.env.RESEND_API_KEY);
+        await resend.emails.send({
+          from: `Finnacle <${from}>`,
           to: email,
           subject: "Verify your Finnacle email",
           html: `<p>Welcome to Finnacle!</p><p>Please verify your email by clicking the link below:</p><p><a href="${verifyUrl}">Verify Email</a></p><p>This link expires in 1 hour.</p>`,
@@ -57,6 +65,7 @@ router.post(
         // If email fails, we still keep the user record; client can retry verification
         console.warn("[mail] send failed:", e.message);
       }
+      // --- END OF CHANGE ---
 
       return res.status(201).json({ message: "Verification email sent" });
     } catch (err) {
@@ -82,7 +91,8 @@ router.post(
           emailVerificationExpires: { gt: new Date() },
         },
       });
-      if (!user) return res.status(400).json({ error: "Invalid or expired token" });
+      if (!user)
+        return res.status(400).json({ error: "Invalid or expired token" });
 
       await prisma.user.update({
         where: { id: user.id },
@@ -104,16 +114,20 @@ router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) return res.status(400).json({ error: "Invalid email or password" });
+    if (!user)
+      return res.status(400).json({ error: "Invalid email or password" });
 
     if (!user.emailVerified) {
       return res.status(403).json({ error: "Email not verified" });
     }
 
     const match = await bcrypt.compare(password, user.password);
-    if (!match) return res.status(400).json({ error: "Invalid email or password" });
+    if (!match)
+      return res.status(400).json({ error: "Invalid email or password" });
 
-    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: "7d" });
+    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, {
+      expiresIn: "7d",
+    });
 
     res.json({ token });
   } catch (err) {
@@ -126,8 +140,7 @@ router.post("/logout", async (req, res) => {
   return res.json({ message: "Logged out" });
 });
 
-
-router.get('/debug-db', async (req, res) => {
+router.get("/debug-db", async (req, res) => {
   try {
     // We are attempting a query that explicitly uses the new column
     await prisma.user.findFirst({
@@ -135,13 +148,15 @@ router.get('/debug-db', async (req, res) => {
         emailVerified: true,
       },
     });
-    res.status(200).json({ status: 'OK', message: 'Database schema is up-to-date.' });
+    res
+      .status(200)
+      .json({ status: "OK", message: "Database schema is up-to-date." });
   } catch (e) {
     // This will catch the specific Prisma error and give us the details
-    console.error('DEBUG DB ERROR:', e);
-    res.status(500).json({ 
-      status: 'ERROR', 
-      message: 'Failed to query the new schema.',
+    console.error("DEBUG DB ERROR:", e);
+    res.status(500).json({
+      status: "ERROR",
+      message: "Failed to query the new schema.",
       errorCode: e.code, // The specific Prisma error code
       errorMessage: e.message,
     });
