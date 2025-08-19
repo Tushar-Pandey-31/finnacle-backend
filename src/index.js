@@ -22,7 +22,7 @@ const prisma = new PrismaClient();
 // Centralized CORS configuration used for all requests, including preflights and errors
 const allowedOrigins = [
   "https://finnacle-beta.vercel.app",
-  "https://finnacle-ai-microservice.vercel.app/",
+  "https://finnacle-ai-microservice.vercel.app",
   "http://localhost:3000",            // local dev
 ];
 
@@ -99,18 +99,11 @@ app.use((err, req, res, next) => {
       res.setHeader("Access-Control-Allow-Credentials", "true");
     }
   } catch {}
+  console.error(err);
   const status = err.status || 500;
-  res.status(status).json({ error: err.message || "Server error" });
-});
-
-app.use((err, req, res, next) => {
-  console.error(err); // Log the full error to the console for debugging
-
-  const status = err.status || 500;
-  const message = process.env.NODE_ENV === 'production' 
-    ? 'An unexpected server error occurred.' 
-    : err.message;
-
+  const message = process.env.NODE_ENV === 'production'
+    ? 'An unexpected server error occurred.'
+    : err.message || 'Server error';
   res.status(status).json({ error: message });
 });
 
