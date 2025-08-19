@@ -163,4 +163,97 @@ router.get("/debug-db", async (req, res) => {
   }
 });
 
+// Request password reset link
+router.post(
+  "/forgot-password",
+  [body("email").isEmail().normalizeEmail()],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ error: "Invalid email" });
+      }
+
+      const { email } = req.body;
+      const user = await prisma.user.findUnique({ where: { email } });
+
+      const from = process.env.EMAIL_FROM_ADDRESS;
+      const frontendUrl = process.env.FRONTEND_URL || "";
+
+      if (user) {
+        const token = crypto.randomBytes(32).toString("hex");
+        const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+        await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            passwordResetToken: token,
+            passwordResetExpires: expiresAt,
+          },
+        });
+
+        try {
+          const resend = new Resend(process.env.RESEND_API_KEY);
+          const resetUrl = `${String(frontendUrl).replace(/\/$/, "")}/reset-password?token=${token}`;
+          await resend.emails.send({
+            from: `Finnacle <${from}>`,
+            to: email,
+            subject: "Reset your Finnacle password",
+            html: `<p>We received a request to reset your Finnacle password.</p><p>Click the link below to set a new password:</p><p><a href="${resetUrl}">Reset Password</a></p><p>This link expires in 1 hour. If you didn't request this, you can ignore this email.</p>`,
+          });
+        } catch (e) {
+          console.warn("[mail] send failed:", e.message);
+        }
+      }
+
+      // Always respond success to avoid account enumeration
+      return res.json({
+        message: "If an account exists for that email, a reset link has been sent.",
+      });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+);
+
+// Complete password reset
+router.post(
+  "/reset-password",
+  [
+    body("token").isString().isLength({ min: 10 }),
+    body("password").isString().isLength({ min: 8 }),
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ error: "Invalid input" });
+      }
+
+      const { token, password } = req.body;
+      const user = await prisma.user.findFirst({
+        where: {
+          passwordResetToken: token,
+          passwordResetExpires: { gt: new Date() },
+        },
+      });
+      if (!user) return res.status(400).json({ error: "Invalid or expired token" });
+
+      const hashed = await bcrypt.hash(password, 10);
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          password: hashed,
+          passwordResetToken: null,
+          passwordResetExpires: null,
+        },
+      });
+
+      return res.json({ message: "Password reset successful" });
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+);
+
 export default router;
