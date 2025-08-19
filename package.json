@@ -4,11 +4,15 @@
   "type": "module",
   "description": "Backend for Finnacle fintech app",
   "main": "src/index.js",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
-    "migrate": "npx prisma migrate dev",
-    "generate": "npx prisma generate"
+    "migrate": "prisma migrate deploy",
+    "generate": "prisma generate",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@prisma/client": "^6.14.0",

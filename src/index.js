@@ -12,12 +12,13 @@ import aiRoutes from "./routes/ai.js";
 
 import { initializeDatabase } from './utils/initDB.js';
 
-// Initialize database schema
-await initializeDatabase();
-
 dotenv.config();
+
 const app = express();
 const prisma = new PrismaClient();
+
+// Initialize database schema after env is available
+await initializeDatabase();
 
 // Centralized CORS configuration used for all requests, including preflights and errors
 const allowedOrigins = [
