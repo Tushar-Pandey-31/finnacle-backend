@@ -8,8 +8,7 @@
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
     "migrate": "npx prisma migrate dev",
-    "generate": "npx prisma generate",
-    "seed": "node prisma/seed.js"
+    "generate": "npx prisma generate"
   },
   "dependencies": {
     "@prisma/client": "^6.14.0",
@@ -21,7 +20,6 @@
     "express-validator": "^7.0.1",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
-    "nodemailer": "^6.9.11",
     "resend": "^6.0.1"
   },
   "devDependencies": {
