@@ -12,7 +12,8 @@
     "start": "node src/index.js",
     "migrate": "prisma migrate deploy",
     "generate": "prisma generate",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "seed:quiz": "node src/utils/seedQuiz.js"
   },
   "dependencies": {
     "@prisma/client": "^6.14.0",

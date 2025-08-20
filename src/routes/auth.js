@@ -125,11 +125,37 @@ router.post("/login", async (req, res) => {
     if (!match)
       return res.status(400).json({ error: "Invalid email or password" });
 
-    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, {
-      expiresIn: "7d",
-    });
+    // Concurrency-safe initial grant: only once per user
+    try {
+      await prisma.$transaction(async (tx) => {
+        const fresh = await tx.user.findUnique({ where: { id: user.id }, select: { initialWalletGrantedAt: true } });
+        if (!fresh?.initialWalletGrantedAt) {
+          // Ensure audit uniqueness on reason+relatedId
+          await tx.moneyTransaction.create({
+            data: {
+              userId: user.id,
+              amountCents: 1000000,
+              reason: "INITIAL_GRANT",
+              relatedId: `init:${user.id}`,
+            },
+          });
+          await tx.user.update({
+            where: { id: user.id },
+            data: {
+              walletBalanceCents: { increment: 1000000 },
+              initialWalletGrantedAt: new Date(),
+            },
+          });
+        }
+      });
+    } catch (e) {
+      // Ignore unique violation from concurrent login
+      if (e.code !== "P2002") throw e;
+    }
 
-    res.json({ token });
+    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: "7d" });
+    const me = await prisma.user.findUnique({ where: { id: user.id }, select: { id: true, email: true, walletBalanceCents: true } });
+    res.json({ token, user: me });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
