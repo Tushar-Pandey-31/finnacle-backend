@@ -11,6 +11,7 @@ import watchlistRoutes from "./routes/watchlist.js";
 import aiRoutes from "./routes/ai.js";
 import quizRoutes from "./routes/quiz.js";
 import leaderboardRoutes from "./routes/leaderboard.js";
+import tradeRoutes from "./routes/trades.js";
 
 import { initializeDatabase } from './utils/initDB.js';
 
@@ -93,6 +94,7 @@ app.use("/api", watchlistRoutes);
 app.use("/api", aiRoutes);
 app.use("/api", quizRoutes);
 app.use("/api", leaderboardRoutes);
+app.use("/api", tradeRoutes);
 
 // Global error handler: ensure CORS headers present on errors as well
 app.use((err, req, res, next) => {

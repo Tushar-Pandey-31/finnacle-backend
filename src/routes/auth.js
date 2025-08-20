@@ -41,6 +41,8 @@ router.post(
           emailVerified: false,
           emailVerificationToken: token,
           emailVerificationExpires: expiresAt,
+          walletBalanceCents: 1000000,
+          initialWalletGrantedAt: new Date(),
         },
         select: { id: true, email: true, emailVerified: true },
       });
