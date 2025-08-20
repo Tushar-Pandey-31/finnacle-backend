@@ -127,7 +127,13 @@ router.post("/trades/buy", authMiddleware, async (req, res) => {
       });
 
       const positionsRaw = await tx.holding.findMany({ where: { portfolioId: portfolio.id }, select: { symbol: true, quantity: true, avgPriceCents: true } });
-      const positions = positionsRaw.map((p) => ({ symbol: p.symbol, qty: p.quantity, avgPriceCents: p.avgPriceCents }));
+      const positions = positionsRaw.map((p) => ({
+        symbol: p.symbol,
+        quantity: p.quantity,
+        avgPrice: Math.round(p.avgPriceCents) / 100,
+        qty: p.quantity,
+        avgPriceCents: p.avgPriceCents,
+      }));
       return { walletBalanceCents: updatedUser.walletBalanceCents, positions };
     });
 
@@ -184,7 +190,13 @@ router.post("/trades/sell", authMiddleware, async (req, res) => {
       });
 
       const positionsRaw = await tx.holding.findMany({ where: { portfolioId: portfolio.id }, select: { symbol: true, quantity: true, avgPriceCents: true } });
-      const positions = positionsRaw.map((p) => ({ symbol: p.symbol, qty: p.quantity, avgPriceCents: p.avgPriceCents }));
+      const positions = positionsRaw.map((p) => ({
+        symbol: p.symbol,
+        quantity: p.quantity,
+        avgPrice: Math.round(p.avgPriceCents) / 100,
+        qty: p.quantity,
+        avgPriceCents: p.avgPriceCents,
+      }));
       return { walletBalanceCents: updatedUser.walletBalanceCents, positions, realizedPnlCents: updatedUser.realizedPnlCents };
     });
 
@@ -205,7 +217,13 @@ router.get("/portfolio/summary", authMiddleware, async (req, res) => {
     if (!user) return res.status(404).json({ error: "User not found" });
     if (!portfolio) return res.json({ walletBalanceCents: user.walletBalanceCents, positions: [], realizedPnlCents: user.realizedPnlCents });
     const positionsRaw = await prisma.holding.findMany({ where: { portfolioId: portfolio.id }, select: { symbol: true, quantity: true, avgPriceCents: true } });
-    const positions = positionsRaw.map((p) => ({ symbol: p.symbol, qty: p.quantity, avgPriceCents: p.avgPriceCents }));
+    const positions = positionsRaw.map((p) => ({
+      symbol: p.symbol,
+      quantity: p.quantity,
+      avgPrice: Math.round(p.avgPriceCents) / 100,
+      qty: p.quantity,
+      avgPriceCents: p.avgPriceCents,
+    }));
     const enriched = await enrichPositionsWithLastPrices(positions);
     res.json({ walletBalanceCents: user.walletBalanceCents, positions: enriched, realizedPnlCents: user.realizedPnlCents });
   } catch (e) {
