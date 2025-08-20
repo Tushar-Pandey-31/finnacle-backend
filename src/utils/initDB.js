@@ -25,6 +25,7 @@ export async function initializeDatabase() {
         ADD COLUMN IF NOT EXISTS "name" TEXT NULL,
         ADD COLUMN IF NOT EXISTS "walletBalanceCents" INTEGER NOT NULL DEFAULT 0,
         ADD COLUMN IF NOT EXISTS "initialWalletGrantedAt" TIMESTAMP NULL,
+        ADD COLUMN IF NOT EXISTS "realizedPnlCents" INTEGER NOT NULL DEFAULT 0,
         ADD COLUMN IF NOT EXISTS "createdAt" TIMESTAMP NOT NULL DEFAULT NOW(),
         ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMP NOT NULL DEFAULT NOW();
       `;
@@ -43,6 +44,24 @@ export async function initializeDatabase() {
         DO $$ BEGIN
           CREATE INDEX "idx_user_wallet_balance" ON "User"("walletBalanceCents" DESC);
         EXCEPTION WHEN duplicate_table THEN NULL; END $$;
+      `;
+
+      // Backfill initial grant for legacy users missing it
+      await prisma.$executeRaw`
+        UPDATE "User"
+        SET "walletBalanceCents" = 1000000,
+            "initialWalletGrantedAt" = NOW()
+        WHERE ("walletBalanceCents" IS NULL OR "walletBalanceCents" = 0)
+          AND "initialWalletGrantedAt" IS NULL;
+      `;
+
+      // Backfill initial grant for legacy users missing it
+      await prisma.$executeRaw`
+        UPDATE "User"
+        SET "walletBalanceCents" = 1000000,
+            "initialWalletGrantedAt" = NOW()
+        WHERE ("walletBalanceCents" IS NULL OR "walletBalanceCents" = 0)
+          AND "initialWalletGrantedAt" IS NULL;
       `;
       
       console.log('✅ Email verification columns added');
