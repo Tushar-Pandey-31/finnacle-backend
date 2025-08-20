@@ -70,6 +70,11 @@ export async function initializeDatabase() {
     // Ensure Quiz and MoneyTransaction structures exist (idempotent)
     try {
       console.log('🔄 Ensuring quiz and wallet audit tables exist...');
+      // Ensure Holding.avgPriceCents exists (idempotent)
+      await prisma.$executeRaw`
+        ALTER TABLE "Holding"
+        ADD COLUMN IF NOT EXISTS "avgPriceCents" INTEGER NOT NULL DEFAULT 0;
+      `;
       await prisma.$executeRaw`
         DO $$ BEGIN
           CREATE TYPE "MoneyTransactionReason" AS ENUM ('INITIAL_GRANT', 'QUIZ_CORRECT_ANSWER');
