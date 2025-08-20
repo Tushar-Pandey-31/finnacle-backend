@@ -35,26 +35,79 @@ function toCentsOrThrow(value, fallback) {
   throw new Error("Invalid cents value");
 }
 
+async function resolvePriceCents(symbol, priceCents, price) {
+  // Prefer priceCents if provided
+  if (priceCents != null) {
+    const cents = Number(priceCents);
+    if (!Number.isFinite(cents) || cents <= 0) return { error: "INVALID_PRICE" };
+    return { priceCents: Math.round(cents) };
+  }
+  // Next, accept price (USD float)
+  if (price != null) {
+    const usd = Number(price);
+    if (!Number.isFinite(usd) || usd <= 0) return { error: "INVALID_PRICE" };
+    return { priceCents: Math.round(usd * 100) };
+  }
+  // Finally, fetch from Finnhub as market price
+  const token = process.env.FINNHUB_API_KEY;
+  if (!token) return { error: "INVALID_PRICE" };
+  try {
+    const { data } = await axios.get("https://finnhub.io/api/v1/quote", { params: { symbol, token } });
+    const last = typeof data?.c === 'number' ? Math.round(data.c * 100) : null;
+    if (!last || last <= 0) return { error: "INVALID_PRICE" };
+    return { priceCents: last };
+  } catch {
+    return { error: "INVALID_SYMBOL" };
+  }
+}
+
+async function enrichPositionsWithLastPrices(positions) {
+  const token = process.env.FINNHUB_API_KEY;
+  if (!token || !positions?.length) return positions.map((p) => ({ ...p, lastPriceCents: null }));
+  const uniqueSymbols = Array.from(new Set(positions.map((p) => p.symbol)));
+  const quotes = await Promise.all(
+    uniqueSymbols.map(async (sym) => {
+      try {
+        const { data } = await axios.get("https://finnhub.io/api/v1/quote", { params: { symbol: sym, token } });
+        const last = typeof data?.c === 'number' ? Math.round(data.c * 100) : null;
+        return [sym, last];
+      } catch {
+        return [sym, null];
+      }
+    })
+  );
+  const symToLast = Object.fromEntries(quotes);
+  return positions.map((p) => ({ ...p, lastPriceCents: symToLast[p.symbol] ?? null }));
+}
+
 router.post("/trades/buy", authMiddleware, async (req, res) => {
   try {
-    const { symbol, quantity, priceCents } = req.body || {};
+    const { symbol, quantity, priceCents, price } = req.body || {};
+    const sym = String(symbol || '').trim().toUpperCase();
     const qty = Number(quantity);
-    if (!symbol || !qty || qty <= 0) return res.status(400).json({ error: "symbol and positive quantity required" });
+    if (!sym) return res.status(400).json({ error: "INVALID_SYMBOL" });
+    if (!qty || qty <= 0) return res.status(400).json({ error: "INVALID_QUANTITY" });
 
-    // If priceCents not supplied, reject for now (no live pricing in this route)
-    if (priceCents == null) return res.status(400).json({ error: "priceCents required" });
-    const px = toCentsOrThrow(priceCents);
+    const pr = await resolvePriceCents(sym, priceCents, price);
+    if (pr.error) return res.status(400).json({ error: pr.error });
+    const px = pr.priceCents;
     const costCents = Math.round(px * qty);
 
     const result = await prisma.$transaction(async (tx) => {
+      // Lock user row to prevent concurrent double-spend
+      await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${req.userId} FOR UPDATE`;
       const user = await tx.user.findUnique({ where: { id: req.userId }, select: { walletBalanceCents: true } });
       if (!user) throw new Error("User not found");
       if (user.walletBalanceCents < costCents) {
-        return { error: "Insufficient funds" };
+        return { error: "INSUFFICIENT_FUNDS" };
       }
 
       const portfolio = await getOrCreateDefaultPortfolio(tx, req.userId);
-      const existing = await tx.holding.findFirst({ where: { portfolioId: portfolio.id, symbol } });
+      // Lock existing holding row if it exists
+      const lockRow = await tx.$queryRaw`SELECT id FROM "Holding" WHERE "portfolioId"=${portfolio.id} AND symbol=${sym} FOR UPDATE`;
+      const existing = Array.isArray(lockRow) && lockRow.length
+        ? await tx.holding.findUnique({ where: { id: lockRow[0].id } })
+        : await tx.holding.findFirst({ where: { portfolioId: portfolio.id, symbol: sym } });
 
       let newAvg = px;
       let newQty = qty;
@@ -64,7 +117,7 @@ router.post("/trades/buy", authMiddleware, async (req, res) => {
         newQty = res.newQuantity;
         await tx.holding.update({ where: { id: existing.id }, data: { quantity: newQty, avgPriceCents: newAvg } });
       } else {
-        await tx.holding.create({ data: { portfolioId: portfolio.id, symbol, quantity: qty, avgPriceCents: px } });
+        await tx.holding.create({ data: { portfolioId: portfolio.id, symbol: sym, quantity: qty, avgPriceCents: px } });
       }
 
       const updatedUser = await tx.user.update({
@@ -73,12 +126,14 @@ router.post("/trades/buy", authMiddleware, async (req, res) => {
         select: { walletBalanceCents: true },
       });
 
-      const positions = await tx.holding.findMany({ where: { portfolioId: portfolio.id }, select: { symbol: true, quantity: true, avgPriceCents: true } });
+      const positionsRaw = await tx.holding.findMany({ where: { portfolioId: portfolio.id }, select: { symbol: true, quantity: true, avgPriceCents: true } });
+      const positions = positionsRaw.map((p) => ({ symbol: p.symbol, qty: p.quantity, avgPriceCents: p.avgPriceCents }));
       return { walletBalanceCents: updatedUser.walletBalanceCents, positions };
     });
 
     if (result && result.error) return res.status(400).json({ error: result.error });
-    return res.json(result);
+    const enriched = await enrichPositionsWithLastPrices(result.positions);
+    return res.json({ walletBalanceCents: result.walletBalanceCents, positions: enriched, realizedPnlCents: (await prisma.user.findUnique({ where: { id: req.userId }, select: { realizedPnlCents: true } }))?.realizedPnlCents || 0 });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -86,18 +141,27 @@ router.post("/trades/buy", authMiddleware, async (req, res) => {
 
 router.post("/trades/sell", authMiddleware, async (req, res) => {
   try {
-    const { symbol, quantity, priceCents } = req.body || {};
+    const { symbol, quantity, priceCents, price } = req.body || {};
+    const sym = String(symbol || '').trim().toUpperCase();
     const qty = Number(quantity);
-    if (!symbol || !qty || qty <= 0) return res.status(400).json({ error: "symbol and positive quantity required" });
-    if (priceCents == null) return res.status(400).json({ error: "priceCents required" });
-    const px = toCentsOrThrow(priceCents);
+    if (!sym) return res.status(400).json({ error: "INVALID_SYMBOL" });
+    if (!qty || qty <= 0) return res.status(400).json({ error: "INVALID_QUANTITY" });
+    const pr = await resolvePriceCents(sym, priceCents, price);
+    if (pr.error) return res.status(400).json({ error: pr.error });
+    const px = pr.priceCents;
     const proceedsCents = Math.round(px * qty);
 
     const result = await prisma.$transaction(async (tx) => {
+      // Lock user row
+      await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${req.userId} FOR UPDATE`;
       const portfolio = await getOrCreateDefaultPortfolio(tx, req.userId);
-      const existing = await tx.holding.findFirst({ where: { portfolioId: portfolio.id, symbol } });
+      // Lock holding row
+      const lockRow = await tx.$queryRaw`SELECT id FROM "Holding" WHERE "portfolioId"=${portfolio.id} AND symbol=${sym} FOR UPDATE`;
+      const existing = Array.isArray(lockRow) && lockRow.length
+        ? await tx.holding.findUnique({ where: { id: lockRow[0].id } })
+        : await tx.holding.findFirst({ where: { portfolioId: portfolio.id, symbol: sym } });
       if (!existing || existing.quantity < qty) {
-        return { error: "Insufficient quantity" };
+        return { error: "INSUFFICIENT_QUANTITY" };
       }
 
       // Realized PnL = (sell - avg) * qty
@@ -119,12 +183,14 @@ router.post("/trades/sell", authMiddleware, async (req, res) => {
         select: { walletBalanceCents: true, realizedPnlCents: true },
       });
 
-      const positions = await tx.holding.findMany({ where: { portfolioId: portfolio.id }, select: { symbol: true, quantity: true, avgPriceCents: true } });
+      const positionsRaw = await tx.holding.findMany({ where: { portfolioId: portfolio.id }, select: { symbol: true, quantity: true, avgPriceCents: true } });
+      const positions = positionsRaw.map((p) => ({ symbol: p.symbol, qty: p.quantity, avgPriceCents: p.avgPriceCents }));
       return { walletBalanceCents: updatedUser.walletBalanceCents, positions, realizedPnlCents: updatedUser.realizedPnlCents };
     });
 
     if (result && result.error) return res.status(400).json({ error: result.error });
-    return res.json(result);
+    const enriched = await enrichPositionsWithLastPrices(result.positions);
+    return res.json({ walletBalanceCents: result.walletBalanceCents, positions: enriched, realizedPnlCents: result.realizedPnlCents });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -138,28 +204,9 @@ router.get("/portfolio/summary", authMiddleware, async (req, res) => {
     ]);
     if (!user) return res.status(404).json({ error: "User not found" });
     if (!portfolio) return res.json({ walletBalanceCents: user.walletBalanceCents, positions: [], realizedPnlCents: user.realizedPnlCents });
-    const positions = await prisma.holding.findMany({ where: { portfolioId: portfolio.id }, select: { symbol: true, quantity: true, avgPriceCents: true } });
-
-    // Enrich with lastPriceCents from Finnhub if configured
-    let enriched = positions.map((p) => ({ ...p, lastPriceCents: null }));
-    const token = process.env.FINNHUB_API_KEY;
-    if (token && enriched.length) {
-      const uniqueSymbols = Array.from(new Set(enriched.map((p) => p.symbol)));
-      const quotes = await Promise.all(
-        uniqueSymbols.map(async (sym) => {
-          try {
-            const { data } = await axios.get("https://finnhub.io/api/v1/quote", { params: { symbol: sym, token } });
-            const last = typeof data?.c === 'number' ? Math.round(data.c * 100) : null;
-            return [sym, last];
-          } catch {
-            return [sym, null];
-          }
-        })
-      );
-      const symToLast = Object.fromEntries(quotes);
-      enriched = enriched.map((p) => ({ ...p, lastPriceCents: symToLast[p.symbol] ?? null }));
-    }
-
+    const positionsRaw = await prisma.holding.findMany({ where: { portfolioId: portfolio.id }, select: { symbol: true, quantity: true, avgPriceCents: true } });
+    const positions = positionsRaw.map((p) => ({ symbol: p.symbol, qty: p.quantity, avgPriceCents: p.avgPriceCents }));
+    const enriched = await enrichPositionsWithLastPrices(positions);
     res.json({ walletBalanceCents: user.walletBalanceCents, positions: enriched, realizedPnlCents: user.realizedPnlCents });
   } catch (e) {
     res.status(500).json({ error: e.message });
