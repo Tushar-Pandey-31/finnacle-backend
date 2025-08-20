@@ -1,6 +1,8 @@
 import express from "express";
 import jwt from "jsonwebtoken";
+import axios from "axios";
 import { PrismaClient } from "@prisma/client";
+import { computeBuyAveragePriceCents, computeSellRealizedPnlCents } from "../utils/tradeMath.js";
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -57,11 +59,9 @@ router.post("/trades/buy", authMiddleware, async (req, res) => {
       let newAvg = px;
       let newQty = qty;
       if (existing) {
-        const oldQty = existing.quantity;
-        const oldCost = Math.round(existing.avgPriceCents * oldQty);
-        const newCost = oldCost + costCents;
-        newQty = oldQty + qty;
-        newAvg = Math.floor(newCost / newQty);
+        const res = computeBuyAveragePriceCents(existing.avgPriceCents, existing.quantity, px, qty);
+        newAvg = res.newAvgPriceCents;
+        newQty = res.newQuantity;
         await tx.holding.update({ where: { id: existing.id }, data: { quantity: newQty, avgPriceCents: newAvg } });
       } else {
         await tx.holding.create({ data: { portfolioId: portfolio.id, symbol, quantity: qty, avgPriceCents: px } });
@@ -101,8 +101,7 @@ router.post("/trades/sell", authMiddleware, async (req, res) => {
       }
 
       // Realized PnL = (sell - avg) * qty
-      const pnlPerShare = px - existing.avgPriceCents;
-      const realized = Math.round(pnlPerShare * qty);
+      const realized = computeSellRealizedPnlCents(existing.avgPriceCents, px, qty);
 
       const remainingQty = existing.quantity - qty;
       if (remainingQty <= 0) {
@@ -140,7 +139,28 @@ router.get("/portfolio/summary", authMiddleware, async (req, res) => {
     if (!user) return res.status(404).json({ error: "User not found" });
     if (!portfolio) return res.json({ walletBalanceCents: user.walletBalanceCents, positions: [], realizedPnlCents: user.realizedPnlCents });
     const positions = await prisma.holding.findMany({ where: { portfolioId: portfolio.id }, select: { symbol: true, quantity: true, avgPriceCents: true } });
-    res.json({ walletBalanceCents: user.walletBalanceCents, positions, realizedPnlCents: user.realizedPnlCents });
+
+    // Enrich with lastPriceCents from Finnhub if configured
+    let enriched = positions.map((p) => ({ ...p, lastPriceCents: null }));
+    const token = process.env.FINNHUB_API_KEY;
+    if (token && enriched.length) {
+      const uniqueSymbols = Array.from(new Set(enriched.map((p) => p.symbol)));
+      const quotes = await Promise.all(
+        uniqueSymbols.map(async (sym) => {
+          try {
+            const { data } = await axios.get("https://finnhub.io/api/v1/quote", { params: { symbol: sym, token } });
+            const last = typeof data?.c === 'number' ? Math.round(data.c * 100) : null;
+            return [sym, last];
+          } catch {
+            return [sym, null];
+          }
+        })
+      );
+      const symToLast = Object.fromEntries(quotes);
+      enriched = enriched.map((p) => ({ ...p, lastPriceCents: symToLast[p.symbol] ?? null }));
+    }
+
+    res.json({ walletBalanceCents: user.walletBalanceCents, positions: enriched, realizedPnlCents: user.realizedPnlCents });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
