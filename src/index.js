@@ -9,6 +9,8 @@ import portfolioRoutes from "./routes/portfolio.js";
 import marketRoutes from "./routes/market.js";
 import watchlistRoutes from "./routes/watchlist.js";
 import aiRoutes from "./routes/ai.js";
+import quizRoutes from "./routes/quiz.js";
+import leaderboardRoutes from "./routes/leaderboard.js";
 
 import { initializeDatabase } from './utils/initDB.js';
 
@@ -89,6 +91,8 @@ app.use("/api/portfolio", portfolioRoutes);
 app.use("/api", marketRoutes);
 app.use("/api", watchlistRoutes);
 app.use("/api", aiRoutes);
+app.use("/api", quizRoutes);
+app.use("/api", leaderboardRoutes);
 
 // Global error handler: ensure CORS headers present on errors as well
 app.use((err, req, res, next) => {

@@ -10,6 +10,7 @@ datasource db {
 model User {
   id        Int      @id @default(autoincrement())
   email     String   @unique
+  name      String?
   password  String
   emailVerified          Boolean?  @default(false)
   emailVerificationToken String?   @unique
@@ -18,6 +19,14 @@ model User {
   passwordResetExpires   DateTime?
   portfolios Portfolio[]
   watchlistItems UserWatchlist[]
+  walletBalanceCents     Int       @default(0)
+  initialWalletGrantedAt DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  dailyQuizAssignments   DailyQuizAssignment[]
+  moneyTransactions      MoneyTransaction[]
+
+  @@index([walletBalanceCents(sort: Desc)], name: "idx_user_wallet_balance")
 }
 
 model Portfolio {
@@ -45,4 +54,52 @@ model UserWatchlist {
 
   @@unique([userId, marketType, symbol])
   @@map("user_watchlist")
+}
+
+/// Quiz questions master table
+model QuizQuestion {
+  id                 Int       @id @default(autoincrement())
+  prompt             String
+  options            String[]
+  correctOptionIndex Int
+  category           String?
+  difficulty         String?
+  isActive           Boolean   @default(true)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+}
+
+/// Daily assignment per user, stores selected question ids and attempts as JSON
+model DailyQuizAssignment {
+  id             Int       @id @default(autoincrement())
+  user           User      @relation(fields: [userId], references: [id])
+  userId         Int
+  dateUTC        DateTime  @db.Date
+  questionIds    Int[]
+  attempts       Json?
+  correctCount   Int       @default(0)
+  attemptedCount Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([userId, dateUTC])
+}
+
+enum MoneyTransactionReason {
+  INITIAL_GRANT
+  QUIZ_CORRECT_ANSWER
+}
+
+/// Audit trail for wallet changes
+model MoneyTransaction {
+  id           Int                      @id @default(autoincrement())
+  user         User                     @relation(fields: [userId], references: [id])
+  userId       Int
+  amountCents  Int
+  reason       MoneyTransactionReason
+  relatedId    String?
+  createdAt    DateTime                 @default(now())
+
+  @@index([userId])
+  @@unique([userId, reason, relatedId])
 }
